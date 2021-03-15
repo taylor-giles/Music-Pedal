@@ -1,3 +1,4 @@
+#include <JC_Button.h>
 #include <SSD1306Ascii.h>
 #include <SSD1306AsciiWire.h>
 #include <Wire.h>
@@ -5,6 +6,7 @@
 #include <SoftwareSerial.h>
 #include <EEPROM.h>
 
+//Constants
 #define SIZE_ADDRESS 0 //EEPROM address for number of songs
 #define SCREEN_WIDTH 128 // OLED display width, in pixels
 #define SCREEN_HEIGHT 64 // OLED display height, in pixels
@@ -13,18 +15,29 @@
 #define MAX_SONGS 70 //The maximum number of songs that can be stored in EEPROM
 #define TIMEOUT 2000 //Millis to wait for data to be available
 #define CYCLE_LENGTH 8  //The number of times a frequency needs to be read to identify it as a note
-#define BUTTON_PIN 8 //The pin that the footswitch uses
-#define HOLD_TIME 1250 //The time, in millis, for a hold to register
+#define HOLD_TIME 750 //The time, in millis, for a held button to register
 #define DOUBLE_PRESS_TIME 300 //The maximum time, in millis, between double-press register
+
+//Pins
+#define BUTTON_PIN 8 //The pin that the footswitch uses
+#define DF_TX_PIN 10 //The pin that connects to DFPlayer TX
+#define DF_RX_PIN 11 //The pin that connects to DFPlayer RX
+#define RED_PIN 3 //The pin to the red component of the RGB LED
+#define GREEN_PIN 5 //The pin to the green component of the RGB LED
+#define BLUE_PIN 6 //The pin to the blue component of the RGB LED
+#define BUSY_PIN 4 //If this pin is LOW, the DFPlayer is playing a song, and vice-versa
+#define REPEAT_PIN 7 //If this pin is LOW, when a song ends, it will be repeated (looped)
+#define CONTINUE_PIN 9 //If this pin is LOW, when a song ends, the next song will begin
 
 typedef struct Song {
   char notes[5];
   int num;
 } Song;
 
-//Declarations
+/* VARIABLE DECLARATION*/
 //Songs
 Song tracks[MAX_SONGS];
+Song currentTrack;
 int numSongs = 0;
 const Song nullSong = { .notes = {'Z', 'Z', 'Z', 'Z', '\0'}, .num = -1 }; //Used in place of a null pointer
 char notesIn[5] = "ZZZZ"; //The array that stores the input notes
@@ -33,12 +46,15 @@ char notesIn[5] = "ZZZZ"; //The array that stores the input notes
 SSD1306AsciiWire display;
 
 //DFPlayer
-SoftwareSerial mySerial(10, 11);
+SoftwareSerial mySerial(DF_TX_PIN, DF_RX_PIN);
 DFPlayerMini_Fast player;
+boolean wasPlaying = false;
 
 //Serial
 const char PING_KEY[] = "Parrot";
 const char CONFIRM_KEY[] = "Confirm";
+const char CONTINUE_KEY[] = "Go";
+const char STANDBY_KEY[] = "Standby";
 
 //Input
 const float MAX_FREQ = 400;
@@ -46,8 +62,8 @@ const float MIN_FREQ = 40;
 const float BASEMAX = 80;
 const float CERTAINTY = 0.025; //If a measured freq is within 2.5% of a note, identify as that note.
 const float TOLERANCE = 2; //Hz needed to determine a consistent note
+const Button ftsw(BUTTON_PIN);
 boolean input = false;
-long pressedAt = 0;  //Time in millis that the footswitch was pressed (used for press length detection)
 
 //Note identification
 const float E = 41.2034;
@@ -63,9 +79,9 @@ const float Db = 69.2957;
 const float D = 73.4162;
 const float Eb = 77.7817;
 const float NOTES[] = {A, Bb, B, C, Db, D, Eb, E, F, Gb, G, Ab};
-const String NAMES[] = {"A", "Bb", "B", "C", "Db", "D", "Eb", "E", "F", "Gb", "G", "Ab"};
-const char IDS[] = {'A', 'H', 'B', 'C', 'I', 'D', 'J', 'E', 'F', 'K', 'G', 'L'};
-float prevFreqs[CYCLE_LENGTH]; //Storage for previous frequencies
+const String NAMES[] = {"A", "Bb", "B", "C", "C#", "D", "Eb", "E", "F", "F#", "G", "G#"};
+const char IDS[] =     {'A', 'H',  'B', 'C', 'I',  'D', 'J',  'E', 'F', 'K',  'G', 'L'};
+float prevFreqs[CYCLE_LENGTH]; //Storage for previous frequencies (for note identification certainty)
 int freqIndex = 0; //The current index for frequency processing
 String note = "?"; //The name of the current saved note
 char id = '?'; //The ID of the current saved note
@@ -73,7 +89,7 @@ int noteIndex = 0; //The index of the current note in the input array
 
 
 /*
-   Frequency Detection Variables
+   Frequency Detection Variables, from Amanda Ghassaei's code
 */
 //clipping indicator variables
 boolean clipping = 0;
@@ -117,16 +133,22 @@ void setup() {
   //Pins
   pinMode(BUTTON_PIN, INPUT_PULLUP);
   pinMode(13, OUTPUT);
-  pinMode(3, OUTPUT);
-  analogWrite(3, 127);
+  pinMode(RED_PIN, OUTPUT);
+  pinMode(GREEN_PIN, OUTPUT);
+  pinMode(BLUE_PIN, OUTPUT);
+  pinMode(BUSY_PIN, INPUT);
+  pinMode(REPEAT_PIN, INPUT_PULLUP);
+  pinMode(CONTINUE_PIN, INPUT_PULLUP);
+  
+  //Set up footswitch
+  ftsw.begin();
 
   //Set up DFPlayer
   mySerial.begin(9600);
   player.begin(mySerial);
   player.pause();
-  player.volume(20);
-  //Serial.println("Player ready.");
-
+  player.volume(22);
+  
   //Set up display
   Wire.begin();
   Wire.setClock(400000L);
@@ -151,15 +173,13 @@ void setup() {
   display.set1X();
   display.println(" P  E  D  A  L  S");
 
-
   //Get the number of songs stored in EEPROM
   EEPROM.get(SIZE_ADDRESS, numSongs);
-  //Serial.print("Number of Songs: ");
-  //Serial.println(numSongs, DEC);
 
   //Get the songs from EEPROM
   EEPROM.get(SIZE_ADDRESS + sizeof(numSongs), tracks);
-  //Serial.println("Songs retrieved.");
+
+  currentTrack = tracks[0];
 
   //Check for Edit Mode
   Serial.println(PING_KEY);
@@ -173,7 +193,15 @@ void setup() {
 
     editMode();
   }
-
+  
+  setColor(255,0,0);
+  delay(500);
+  setColor(0,255,0);
+  delay(500);
+  setColor(0,0,255);
+  delay(500);
+  setColor(0,0,0);
+  
   //Stop splash
   display.clear();
   display.invertDisplay(false);
@@ -185,45 +213,71 @@ void setup() {
    Loop function
 */
 void loop() {
-  if (digitalRead(BUTTON_PIN) == LOW) {
-    Serial.println("Pressed");
+  ftsw.read(); //Read the state of the footswitch
+
+  //If the button was held...
+  if (ftsw.pressedFor(HOLD_TIME)) {
+    //Reset the input variables
+    noteIndex = 0;
+    freqIndex = 0;
+    id = '?';
+    note = "?";
+    
+    //Enter input mode
+    input = true;
+
+    setColor(50,50,50);
+    //display.println("Ready");
+
+    //Wait until the button is released
+    while (ftsw.isPressed()) {
+      ftsw.read();
+    }
+
+    //Update display
     display.clear();
+    display.invertDisplay(true);
     display.setFont(fixed_bold10x15);
     display.set1X();
-    delay(100);
-    //Check for double-press
-    if (millis() - pressedAt < DOUBLE_PRESS_TIME) {
-      display.println("Double press");
-    } else {
-      pressedAt = millis();
+    display.setCursor(4, 4);
+    display.print("__ __ __ __");
+    display.setCursor(4, 4);
+  }
+  
+  //If the button was pressed, but not held...
+  else if (ftsw.wasReleased()) {
+    setColor(0,0,0);
+    //If in input mode, cancel input
+    if (input) {
+      resetDisplay();
       input = false;
 
-      //If the button is held, proceed to input stage
-      while (digitalRead(BUTTON_PIN) == LOW) {
-        if ((millis() - pressedAt) >= HOLD_TIME) {
-          input = true;
-          Serial.println("Input");
-          //Update display
-          display.setCursor(0, 0);
-          display.println("Input\n");
-        }
+      //Restore playing display if track is still playing
+      if(isPlaying()){
+        playingDisplay(currentTrack);
       }
-      delay(50);
-
-      //If the button was not held, play/pause the song
-      if (!input) {
-        if (player.isPlaying()) {
-          player.pause();
-        } else {
-          player.resume();
-        }
+      
+    } else {
+      //Play/pause the player
+      resetDisplay();
+      delay(5);
+      if (isPlaying()) {
+        player.pause();
+        delay(5);
+        setColor(0,0,0);
+        wasPlaying = false;
+      } else {
+        player.resume();
+        playingDisplay(currentTrack);
+        wasPlaying = true;
       }
     }
   }
 
+  //If in input mode...
   if (input) {
     //Check for input
-    checkClipping();
+    //checkClipping();
 
     //If a frequency is found...
     if (checkMaxAmp > ampThreshold) {
@@ -285,42 +339,105 @@ void loop() {
         notesIn[noteIndex] = id;
         noteIndex++;
 
-        //Display the new note
+        //Update display
+        display.setFont(fixed_bold10x15);
         display.set1X();
         display.print(note);
+
+        //If the note is natural...
+        if (id < 'H') {
+          display.print(" "); //Add an extra space to compensate for smaller string length
+        }
         display.print(" ");
 
         //If the correct number of notes was received...
-        if (noteIndex == 4) {
+        if (noteIndex == 4) { //4 is the index of the null character, which is added in this block
           input = false;
-          notesIn[noteIndex] = '\0'; //Indicate that the input is finished
-          noteIndex = 0;
-          freqIndex = 0;
-          id = '?';
+          notesIn[noteIndex] = '\0'; //Indicate that the input is finished using a null character
+
+          //Reset display
+          resetDisplay();
 
           //Find and play the corresponding song
           Song desired = findTrack(notesIn);
           Serial.println(desired.num);
-          display.setFont(Verdana12);
-          display.set1X();
+          Serial.println(desired.notes);
+
+          //If the song was found...
           if (strcmp(desired.notes, nullSong.notes) != 0 && desired.num > 0) {
-            playTrack(desired);
-            delay(1000);
-          } else {
+            currentTrack = desired;
+            playTrack(currentTrack);
+            delay(100);
+          } 
+
+          //If the song was not found...
+          else {
             player.pause();
-            display.clear();
-            display.set2X();
+            delay(5);
+            wasPlaying = false;
+
+            //Update display
+            setColor(255,0,0);
             display.println("Track not");
-            display.println("found.");
-            delay(1000);
+            display.println("found.\n");
+            display.print("Notes:  ");
+            for (int i = 0; i < noteIndex; i++) {
+              for(int j = 0; j < 12; j++){
+                if(IDS[j] == notesIn[i]){
+                  display.print(NAMES[j]);
+                  display.print("  ");
+                  break;
+                }
+              }
+            }
+            delay(1500);
             display.clear();
+            setColor(0,0,0);
           }
+
+          //Reset variables
+          noteIndex = 0;
+          freqIndex = 0;
+          id = '?';
         }
       }
       delay(10);
     }
+  } else {
+    //If a song was playing and it ended, react according to the repeat/continue switch
+    if(!isPlaying() && wasPlaying){
+      if(digitalRead(REPEAT_PIN) == LOW){
+        //Loop this song
+        playTrack(currentTrack);
+      } else if(digitalRead(CONTINUE_PIN) == LOW){
+        //Find and play the next song
+        for(int i = 0; i < numSongs; i++){
+          if(strcmp(currentTrack.notes, tracks[i].notes) == 0){
+            currentTrack = tracks[(i+1) % numSongs];
+            playTrack(currentTrack); 
+            break;
+          }
+        }
+      } else {
+        resetDisplay();
+        setColor(0,0,0);
+        wasPlaying = false;
+      }
+    }
   }
 }
+
+
+
+
+
+/**
+ * Returns a boolean value indicating whether or not the DFPlayer is currently playing a track
+ */
+boolean isPlaying(){
+  return (digitalRead(BUSY_PIN) == LOW);
+}
+
 
 /**
     Finds the song that corresponds to the given notes
@@ -334,76 +451,132 @@ Song findTrack(char notes[5]) {
   return nullSong;
 }
 
+
 /**
    Plays the track that corresponds to the given index,
    and updates display accordingly.
 */
 void playTrack(Song song) {
   //Play the song
-  player.play(song.num);
+  player.play (song.num);
+  delay(10);
+  wasPlaying = true;
 
   //Update the display
-  display.clear();
-  display.set1X();
-  display.println("Now Playing:");
-  display.print("Track ");
-  display.println(song.num);
-  display.println();
-  display.print("Notes: ");
-  for (int i = 0; i < sizeof(song.notes); i++) {
-    display.print(song.notes[i]);
-    display.print(" ");
+  playingDisplay(song);
+}
+
+
+/**
+   Updates the display when music is playing.
+   Precondition: this should be called only when it is assumed that
+   music is already playing. If music is not playing, this will print
+   an error message.
+*/
+void playingDisplay(Song song) {
+  resetDisplay();
+  if(!isPlaying()){
+    setColor(100,0,0);
+    display.println("Error playing song.");
+    display.println("\nMake sure your SD");
+    display.println("card is inserted.");
+    delay(1500);
+  } else {
+    setColor(0,0,100);
+    display.println("Now Playing:");
+    display.print("Track ");
+    display.println(song.num);
+    display.println();
+    display.print("Notes:  ");
+  
+    //TODO: These sizeof() statements only work out of sheer coincidence (but they work)
+    for (uint8_t i = 0; i < sizeof(song.notes); i++) {
+      for (uint8_t j = 0; j < sizeof(IDS); j++) {
+        if (IDS[j] == song.notes[i]) {
+          display.print(NAMES[j]);
+          display.print("  ");
+        }
+      }
+    }
   }
   display.println();
 }
+
+
+/**
+   Resets the display to the default settings
+*/
+void resetDisplay() {
+  display.clear();
+  display.invertDisplay(false);
+  display.setFont(Verdana12);
+  display.set1X();
+}
+
+
+/**
+ * Sets the color of the RGB LED
+ */
+void setColor(uint8_t red, uint8_t green, uint8_t blue){
+  analogWrite(RED_PIN, map(red, 0, 255, 0, 1023));
+  analogWrite(GREEN_PIN, map(green, 0, 255, 0, 1023));
+  analogWrite(BLUE_PIN, map(blue, 0, 255, 0, 1023));
+}
+
 
 /**
    Allows the pedal to communicate with the Java program
 */
 void editMode() {
-  pinMode(6, OUTPUT);
-  digitalWrite(6, LOW);
   display.clear();
   display.println("Edit mode");
   Serial.println(CONFIRM_KEY);
-  delay(50);
-
-  //Wait for program to send data
-  while(!Serial.available()){}
-  delay(500);
+  
+  delay(1000);
 
   //Get new number of songs
+  //(The number of '#' characters received is the number of songs)
   int newNumSongs = 0;
-  char in;
   while(Serial.available()){
-    in = Serial.read();
-    display.print(in);
-    if(in == '#'){
-      newNumSongs++;
-    } 
-  }
-  display.println(newNumSongs);
-  Serial.println(CONFIRM_KEY);
-
-  delay(500);
-
+    if(Serial.read() == '#'){
+      newNumSongs += 1;
+    } else {
+      break;
+    }
+  } 
+  
   display.clear();
+  display.print("Number of songs: ");
+  display.print(newNumSongs);
+  delay(500);
+  display.clear();   
 
   //Read in the new songs
-  Song newSongs[newNumSongs];
+  Serial.println(CONFIRM_KEY);
+  delay(500);
+  Song newSongs[MAX_SONGS];
   for (int i = 0; i < newNumSongs; i++) {
+    if(i % 4 == 0){
+      display.clear();
+    }
     newSongs[i] = getSong(i + 1);
     display.print(newSongs[i].num);
-    display.print(" ");
+    display.print(": ");
     display.println(newSongs[i].notes);
   }
-
-  delay(50);
-
+  delay(100);
+  
   //Write new songs to EEPROM
-  //TODO Uncomment these lines
-//  EEPROM.put(0, newNumSongs);
-//  EEPROM.put(sizeof(numSongs), newSongs);
+  EEPROM.put(SIZE_ADDRESS, newNumSongs);
+  EEPROM.put(SIZE_ADDRESS + sizeof(newNumSongs), newSongs);
+  delay(100);
+  Serial.println(CONFIRM_KEY);
+  
+  display.clear();
+  display.println("Success!\n");
+  display.println("Don't forget to");
+  display.println("put your SD card back!");
+  delay(5000);
 }
 
 
@@ -423,11 +596,11 @@ Song getSong(int index) {
   return newSong;
 }
 
+
 /**
    Checks to see if the requested String was sent over the serial port
 */
 boolean getKeyFromSerial(char key[]) {
-
   //Wait for data to become available
   int start = millis();
   while (!Serial.available()) {
@@ -447,6 +620,11 @@ boolean getKeyFromSerial(char key[]) {
 
   return strcmp(key, input) == 0;
 }
+
+
+
+
+
 
 /***EVERYTHING BELOW THIS POINT WAS TAKEN IN WHOLE OR IN PART FROM AMANDA GHASSAEI'S TUTORIAL ON ARDUINO FREQUENCY INPUT***/
 
@@ -473,6 +651,7 @@ void freqInit() {
 
   sei();//enable interrupts
 }
+
 
 /**
    Handles processing when a new value is ready on the ADC, using Amanda Ghassaei's code
@@ -548,6 +727,7 @@ ISR(ADC_vect) {//when new ADC value ready
 
 }
 
+
 /**
    Resets frequency input variables, using Amanda Ghassaei's code
 */
@@ -557,12 +737,13 @@ void reset() { //clear out some variables
   maxSlope = 0;//reset slope
 }
 
+
 /**
    Checks if the frequency input is being clipped and acts accordingly, using Amanda Ghassaei's code
 */
 void checkClipping() { //manage clipping indicator LED
   if (clipping) { //if currently clipping
-    PORTB &= B11011111;//turn off clipping indicator led
+    PORTB &= B11011111;//turn off clipping indicator LED
     clipping = 0;
   }
 }
