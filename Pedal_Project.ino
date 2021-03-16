@@ -53,8 +53,6 @@ boolean wasPlaying = false;
 //Serial
 const char PING_KEY[] = "Parrot";
 const char CONFIRM_KEY[] = "Confirm";
-const char CONTINUE_KEY[] = "Go";
-const char STANDBY_KEY[] = "Standby";
 
 //Input
 const float MAX_FREQ = 400;
@@ -109,14 +107,14 @@ int newSlope; //Storage for incoming slope data
 
 //variables for decided whether you have a match
 byte noMatch = 0;//counts how many non-matches you've received to reset variables if it's been too long
-byte slopeTol = 3;//slope tolerance- adjust this if you need
-int timerTol = 10;//timer tolerance- adjust this if you need
+byte slopeTol = 3;//slope tolerance- adjust this if you need (was 3)
+int timerTol = 10;//timer tolerance- adjust this if you need (was 10)
 
 //variables for amp detection
 unsigned int ampTimer = 0;
 byte maxAmp = 0;
 byte checkMaxAmp;
-byte ampThreshold = 30;//raise if you have a very noisy signal
+byte ampThreshold = 30;//raise if you have a very noisy signal (was 30)
 
 /* END VARIABLE DECLARATION */
 
@@ -147,7 +145,7 @@ void setup() {
   mySerial.begin(9600);
   player.begin(mySerial);
   player.pause();
-  player.volume(22);
+  player.volume(15);
   
   //Set up display
   Wire.begin();
@@ -186,14 +184,11 @@ void setup() {
   delay(1000);
   if (getKeyFromSerial(CONFIRM_KEY)) {
     //Stop splash
-    display.clear();
-    display.invertDisplay(false);
-    display.setFont(Verdana12);
-    display.set1X();
-
+    resetDisplay();
     editMode();
   }
-  
+
+  Serial.end();
   setColor(255,0,0);
   delay(500);
   setColor(0,255,0);
@@ -203,10 +198,7 @@ void setup() {
   setColor(0,0,0);
   
   //Stop splash
-  display.clear();
-  display.invertDisplay(false);
-  display.setFont(Verdana12);
-  display.set1X();
+  resetDisplay();
 }
 
 /**
