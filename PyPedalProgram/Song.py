@@ -11,12 +11,12 @@ class Song:
 
 
 class SongWidget(Frame):
-    def __init__(self, parent, song, remove_command=None):
+    def __init__(self, parent, song, remove_command, file_select_command):
         Frame.__init__(self, parent)
         self.song = song
 
         # Label for the track number
-        self.numLabel = Label(self, text=f"{self.song.tracknum+1}", anchor="w")
+        self.numLabel = Label(self, text=f"{self.song.tracknum+1}")
 
         # Title label
         self.titleLabel = Label(self, text="Title: ")
@@ -29,7 +29,7 @@ class SongWidget(Frame):
         self.filepathDisplay = Label(self, text=f"MP3 File:   {self.song.filepath}")
 
         # Choose File Button
-        self.chooseFileButton = Button(self, text="Choose MP3 File")
+        self.chooseFileButton = Button(self, text="Choose MP3 File", command=lambda: file_select_command(self.song.tracknum))
 
         # Remove Song button
         self.removeButton = Button(self, text="Remove", command=lambda: remove_command(self.song.tracknum))

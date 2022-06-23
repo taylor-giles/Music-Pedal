@@ -23,7 +23,7 @@ class ScrollWidget(Frame):
     def populate(self, widgets):
         self.widgets = widgets
         for _index, _widget in enumerate(widgets):
-            _widget.grid(row=_index, column=0, pady=20)
+            _widget.grid(row=_index, column=0, pady=20, sticky="n")
 
     def empty(self):
         for widget in self.widgets:
