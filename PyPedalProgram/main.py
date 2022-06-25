@@ -7,7 +7,7 @@ from ScrollWidget import ScrollWidget
 root = Tk()
 root.title("Pedal Program")
 root.geometry("850x500")
-songListWidget = ScrollWidget(root)
+songListWidget = ScrollWidget(root, width=850)
 
 
 def add_song():
@@ -41,15 +41,22 @@ def ask_for_song_filename(index):
         rebuild()
 
 
+def finish():
+    pass
+
+
 # Program entry point
 songs = []
-addSongButton = Button(root, text="Add Song", command=add_song)
+buttonFrame = Frame(root, height=50)
+addSongButton = Button(buttonFrame, text="Add Song", command=add_song, background="#78CDD7", activebackground="#d2dee6")
+finishButton = Button(buttonFrame, text="FINISH", command=finish, background="#06D6A0", activebackground="#d29add")
 
 instructions = ""
 instructions += "To add a song, press the \"Add Song\" button.\n"
 instructions += "Each song is composed of an MP3 file, a sequence of 4 notes, and an 8-character title.\n"
 instructions += "Use the drop-down selectors to select a note sequence for each song.\n"
-instructions += "NOTE: A note sequence cannot have the same note twice in a row. For example, A-B-A-B is acceptable, but A-A-B-A is not.\n"
+instructions += "NOTE: A note sequence cannot have the same note twice in a row. " \
+                "For example, A-B-A-B is acceptable, but A-A-B-A is not.\n"
 instructions += "Press the \"Finish\" button when you are done editing to upload your changes to the pedal.\n"
 
 instructionsTitle = Label(root, text="INSTRUCTIONS", font=("Default", 20))
@@ -58,5 +65,9 @@ instructionsTitle.pack()
 instructionsLabel.pack()
 
 build()
-addSongButton.pack(pady=20)
+
+addSongButton.place(anchor=CENTER, relx=0.5, rely=0.5, relheight=0.6)
+finishButton.place(anchor=E, x=380, relx=0.5, rely=0.5, relheight=0.7, width=100)
+buttonFrame.pack(fill="x")
+
 root.mainloop()
