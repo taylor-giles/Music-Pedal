@@ -4,10 +4,24 @@ POSSIBLE_NOTES = ["A", "Bb", "B", "C", "C#", "D", "Eb", "E", "F", "F#", "G", "G#
 
 
 class Song:
-    def __init__(self, tracknum, title, filepath):
+    TITLE_LENGTH = 8
+
+    def __init__(self, tracknum, title, filepath, notes=None):
         self.tracknum = tracknum
-        self.title = title
         self.filepath = filepath
+        self._title = StringVar()
+        self._title.set(title)
+        self._notes = [StringVar(), StringVar(), StringVar(), StringVar()]
+
+        if notes is not None:
+            for index in range(len(self._notes)):
+                self._notes[index].set(notes[index])
+
+    def get_notes(self):
+        return [note.get() for note in self._notes]
+
+    def get_title(self):
+        return self._title.get()
 
 
 class SongWidget(Frame):
@@ -24,23 +38,22 @@ class SongWidget(Frame):
         self.titleLabel = Label(self.buttonsFrame, text="Title: ")
 
         # Track title entry
-        self.titleEntry = Entry(self.buttonsFrame)
-        self.titleEntry.insert(0, self.song.title)
+        self.titleEntry = Entry(self.buttonsFrame, textvariable=song._title)
+        # self.titleEntry.insert(0, self.song.title)
 
         # Filepath display
         self.filepathDisplay = Label(self, text=f"MP3 File:   {self.song.filepath}", justify="left")
 
         # Choose File Button
-        self.chooseFileButton = Button(self.buttonsFrame, text="Choose MP3 File", command=lambda: file_select_command(self.song.tracknum), background="#C3BABA", activebackground="#d2dee6")
+        self.chooseFileButton = Button(self.buttonsFrame, text="Choose MP3 File", command=lambda: file_select_command(self.song.tracknum), background="#C3BABA", activebackground="#D4CBCB")
 
         # Remove Song button
-        self.removeButton = Button(self.buttonsFrame, text="Remove", command=lambda: remove_command(self.song.tracknum), background="#E2225A", activebackground="#F3336B")
+        self.removeButton = Button(self.buttonsFrame, text="Remove", command=lambda: remove_command(self.song.tracknum), background="#cc6163", activebackground="#dd7274")
 
         # Set up dropdowns for notes
         self.notesLabel = Label(self.buttonsFrame, text="Notes Sequence: ")
-        self.notes = [StringVar(self), StringVar(self), StringVar(self), StringVar(self)]
         self.noteDropdowns = []
-        for note in self.notes:
+        for note in self.song._notes:
             self.noteDropdowns.append(OptionMenu(self.buttonsFrame, note, *POSSIBLE_NOTES))
             self.noteDropdowns[-1].config(width=2, activebackground="#FAF4F7")
 
