@@ -14,6 +14,7 @@ class Pedal:
         self.ser = serial.Serial(port, 115200, parity=serial.PARITY_NONE, stopbits=serial.STOPBITS_ONE, timeout=1)
 
     def getline(self):
+        time.sleep(0.25)
         return self.ser.readline().replace(b'\r', b'').replace(b'\n', b'').decode('utf-8')
 
     def send(self, msg):
@@ -29,17 +30,20 @@ class Pedal:
     def get_songs(self):
         # Get number of songs (one # character is received for each song)
         num_songs = len(self.getline())
+        print(f"Num songs: {num_songs}")
         songs = []
         for i in range(num_songs):
             # Send confirmation
             self.send(CONFIRM_KEY)
-            time.sleep(0.5)
+            print()
 
             # Get this song's title
             title = self.getline()
+            print(f"Title: {title}")
 
             # Get this song's notes
             notes_str = self.getline()
+            print(f"Notes: {notes_str}")
             notes = [''] * len(notes_str)
             for note_index in range(len(notes_str)):
                 notes[note_index] = POSSIBLE_NOTES[NOTES_IDS.index(notes_str[note_index])]
@@ -80,9 +84,12 @@ def find_pedal():
         time.sleep(1)
 
         # Listen for ping
-        if attempt.getline() == PING_KEY:
+        if attempt.got_key(PING_KEY):
+            print("Received ping")
+
             # Respond to ping with ping
             attempt.send(PING_KEY)
+            print("Sent ping")
 
             # Return the open serial object for this port
             return attempt
