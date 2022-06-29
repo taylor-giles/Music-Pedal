@@ -17,6 +17,7 @@
 #define CYCLE_LENGTH 8  //The number of times a frequency needs to be read to identify it as a note
 #define HOLD_TIME 750 //The time, in millis, for a held button to register
 #define DOUBLE_PRESS_TIME 300 //The maximum time, in millis, between double-press register
+#define TITLE_LENGTH 8 //Length of a song's title
 
 //Pins
 #define BUTTON_PIN 8 //The pin that the footswitch uses
@@ -32,7 +33,7 @@
 typedef struct Song {
   byte num;
   char notes[4];
-  char title[9];
+  char title[TITLE_LENGTH + 1]; //Add one for null char
 } Song;
 
 /* VARIABLE DECLARATION*/
@@ -182,7 +183,7 @@ void setup() {
   EEPROM.get(SIZE_ADDRESS + sizeof(numSongs), tracks);
 
   currentTrack = tracks[0];
-
+  
   //Check for Edit Mode
   Serial.println(PING_KEY);
   delay(1000);
@@ -546,6 +547,8 @@ void editMode() {
   }
 
   //Wait for data to be available
+  resetDisplay();
+  display.println("Waiting...");
   while(!Serial.available()){
     delay(1);
   }
@@ -558,22 +561,46 @@ void editMode() {
     }
   }
 
-  //TODO: Read in songs
+  //Read in songs
   for(byte songIndex = 0; songIndex < newNumSongs; songIndex++){
+    resetDisplay();
+    
     //Send confirmation
     Serial.println(CONFIRM_KEY);
     delay(250);
 
-    //TODO: Get title
+    //Wait for data to be available
+    while(!Serial.available()){
+      delay(1);
+    }
+
+    //Get title
+    for(byte titleIndex = 0; titleIndex < TITLE_LENGTH; titleIndex++){
+      tracks[songIndex].title[titleIndex] = Serial.read();
+    }
+    tracks[songIndex].title[TITLE_LENGTH] = '\0';
+    display.println(tracks[songIndex].title);
+
+    //Get notes
+    for(byte noteIndex = 0; noteIndex < 4; noteIndex++){
+      tracks[songIndex].notes[noteIndex] = Serial.read();
+      display.print(tracks[songIndex].notes[noteIndex]);
+    }
   }
-    
-  
-  
+
+  //Write new songs to EEPROM
+  EEPROM.put(SIZE_ADDRESS, newNumSongs);
+  EEPROM.put(SIZE_ADDRESS + sizeof(newNumSongs), tracks);
+
   display.clear();
   display.println("Success!\n");
   display.println("Don't forget to");
   display.println("put your SD card back!");
-  delay(500000);
+
+  //Stop
+  while(true){
+    delay(1000);
+  }
 }
 
 
