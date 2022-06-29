@@ -61,7 +61,7 @@ class Pedal:
             # Wait for confirmation
             if self.got_key(CONFIRM_KEY):
                 # Send this song's title
-                self.send(song.get_title())
+                self.send(song.get_title().ljust(Song.TITLE_LENGTH, '\0'))
 
                 # Send this song's notes
                 notes_str = ""

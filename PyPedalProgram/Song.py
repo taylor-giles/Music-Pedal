@@ -4,7 +4,7 @@ POSSIBLE_NOTES = ["A", "Bb", "B", "C", "C#", "D", "Eb", "E", "F", "F#", "G", "G#
 
 
 class Song:
-    TITLE_LENGTH = 8
+    TITLE_LENGTH = 8  # NOTE: This is the max length of a title, but there is a null char added on the end in storage
 
     def __init__(self, tracknum, title, filepath, notes=None):
         self.tracknum = tracknum

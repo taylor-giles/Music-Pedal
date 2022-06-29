@@ -1,4 +1,5 @@
 import os.path
+import shutil
 import tkinter.messagebox
 from tkinter import *
 from tkinter import filedialog
@@ -72,6 +73,8 @@ def make_gui():
     finish_button.place(anchor=E, x=380, relx=0.5, rely=0.5)
     button_frame.pack(fill="x")
 
+    root.mainloop()
+
 
 def ask_for_song_filename(index):
     new_filename = filedialog.askopenfilename(title="Select a File", filetypes=[("MP3 Files", "*.mp3")])
@@ -82,6 +85,9 @@ def ask_for_song_filename(index):
 
 def finish():
     # Check songs length
+    if len(songs) <= 0:
+        show_error(f"There must be at least one song in the list")
+        return
     if len(songs) > MAX_NUM_SONGS:
         show_error(
             f"There are too many songs in the list ({len(songs)}). The maximum number of songs is {MAX_NUM_SONGS}.")
@@ -115,13 +121,49 @@ def finish():
     # Send songs
     pedal.send_songs(songs)
 
+    # Make temp folder to copy files to
+    temp_dir = os.path.join(os.path.dirname(mp3_dir), "temp")
+    os.mkdir(temp_dir)
+
+    # Copy files to SD card
+    for _songIndex, song in enumerate(songs):
+        # Get new filename
+        song_filename = os.path.basename(song.filepath)
+        song_filename = str(_songIndex+1).zfill(4) + "_" + song_filename
+
+        # Copy the file
+        new_filepath = os.path.join(temp_dir, song_filename)
+        shutil.copyfile(song.filepath, new_filepath)
+
+    # Delete the old MP3 folder
+    shutil.rmtree(mp3_dir)
+
+    # Rename the temp folder to MP3
+    os.rename(temp_dir, mp3_dir)
+
 
 # Program entry point
 songs = []
 pedal = find_pedal()
 if pedal is not None:
     # Get the current songs from pedal
-    current_songs = pedal.get_songs()
+    songs = pedal.get_songs()
+
+    # Ask user to find the SD card
+    tkinter.messagebox.showinfo("Select SD Card", "Please select the location of the MP3 folder on the SD card.")
+    mp3_dir = filedialog.askdirectory(initialdir=os.getcwd(), title="Select a Folder")
+    if not mp3_dir:
+        pedal.close()
+        exit(1)
+
+    # Get current song filepaths
+    for songIndex, _ in enumerate(songs):
+        # Find file
+        for _, _, files in os.walk(mp3_dir):
+            for file in files:
+                if file.startswith(str(songIndex+1).zfill(4)):
+                    songs[songIndex].filepath = os.path.join(mp3_dir, file)
+                    break
 
     # Use GUI to get new songs from user
     make_gui()
