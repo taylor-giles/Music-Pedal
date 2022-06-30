@@ -10,11 +10,21 @@ from ScrollWidget import ScrollWidget
 
 MAX_NUM_SONGS = 35
 
-# TKinter variables
+# Tkinter variables
 root = Tk()
 root.title("Pedal Program")
 root.geometry("850x500")
 songListWidget = ScrollWidget(root, width=850)
+popup = Toplevel(root)
+popup.geometry("250x100")
+
+
+def show_popup(msg):
+    for child in popup.winfo_children():
+        child.destroy()
+    Label(popup, text=msg).place(relx=.5, rely=.5, anchor=CENTER)
+    popup.deiconify()
+    popup.update()
 
 
 def show_error(msg):
@@ -51,7 +61,7 @@ def make_gui():
     button_frame = Frame(root, height=50)
     add_song_button = Button(button_frame, text="Add Song", command=add_song, background="#C3BABA",
                              activebackground="#D4CBCB")
-    finish_button = Button(button_frame, text="FINISH", command=finish, font="Bold", background="#78CDD7",
+    finish_button = Button(button_frame, text="FINISH", command=finish, font="Bold", background="#67BCC6",
                            activebackground="#89dee8")
 
     instructions = ""
@@ -118,17 +128,23 @@ def finish():
                 f"File {song.filepath} does not exist. Please select a valid file for Track {song.tracknum + 1} ({song.get_title()}).")
             return
 
+    root.withdraw()
+
     # Send songs
+    show_popup("Sending data to pedal...")
     pedal.send_songs(songs)
 
     # Make temp folder to copy files to
+    show_popup("Copying files...")
     temp_dir = os.path.join(os.path.dirname(mp3_dir), "temp")
     os.mkdir(temp_dir)
 
     # Copy files to SD card
     for _songIndex, song in enumerate(songs):
-        # Get new filename
+        # Get new filename (prepend index)
         song_filename = os.path.basename(song.filepath)
+        if song_filename[4] == '_':
+            song_filename = song_filename[5:]
         song_filename = str(_songIndex+1).zfill(4) + "_" + song_filename
 
         # Copy the file
@@ -141,13 +157,24 @@ def finish():
     # Rename the temp folder to MP3
     os.rename(temp_dir, mp3_dir)
 
+    popup.withdraw()
+    tkinter.messagebox.showinfo("Pedal Program", "Success!\nIt is now safe to disconnect the pedal.\nDon't forget to put your SD card back into the pedal.")
+    exit(0)
+
 
 # Program entry point
 songs = []
+root.withdraw()
+popup.withdraw()
+show_popup("Please wait.\nSearching for pedal...")
 pedal = find_pedal()
 if pedal is not None:
+    show_popup("Please wait.\nReading data from pedal...")
+
     # Get the current songs from pedal
     songs = pedal.get_songs()
+
+    popup.withdraw()
 
     # Ask user to find the SD card
     tkinter.messagebox.showinfo("Select SD Card", "Please select the location of the MP3 folder on the SD card.")
@@ -166,10 +193,11 @@ if pedal is not None:
                     break
 
     # Use GUI to get new songs from user
+    root.deiconify()
     make_gui()
 
     # NOTE: Sending new songs to pedal starts in finish()
 
 else:
-    # TODO Pedal not found
-    pass
+    # Pedal not found
+    tkinter.messagebox.showerror("Pedal Not Found", "Unable to detect pedal. Please make sure your pedal is connected to your computer, then try again.")
